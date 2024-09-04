@@ -1,3 +1,16 @@
+Subject: Tech Stack & Feature Improvements - Voice Analyzer
+Introduction
+This report summarizes the recent enhancements made to the tech stack and key features of Voice Analyzer. The primary goals of these improvements were to implement the feedback received from the interviewer, streamline backend processes, and create a more intuitive and versatile user experience.
+Tech Stack Changes
+Backend: The backend was migrated to Python to leverage its robust libraries for machine learning and data processing, ultimately improving code maintainability and efficiency.
+Translation Model: The implementation of the "Helsinki-NLP/opus-mt-mul-en" model has significantly increased the accuracy and fluency of translations. This powerful model is specifically designed to handle multiple languages, aligning perfectly with expanding language support goals.
+UI Feature Enhancements
+Image Hover Displaying Original Text: An image has been integrated into the UI, offering a visual representation of the original text when the user hovers over it. This feature aims to provide a quick visual reference for users, enhancing their understanding and interaction with the translated content.
+Multi-Language Dropdown: Allowing users to select between a wider range of languages.
+
+
+
+
 **Project Title: Voice Analyzer**
 
 **Project Overview:**
