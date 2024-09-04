@@ -1,33 +1,36 @@
-// Function to show the Bootstrap modal for username input
+// Function to display the Bootstrap modal for username input
 function showNameModal() {
     $('#nameModal').modal('show');
 }
 
-// Check if name and userID are stored in local storage
-let name = localStorage.getItem('name');
+// Check if userName and userID are stored in local storage
+let userName = localStorage.getItem('userName');
 let userID = localStorage.getItem('userID');
 
-// If not stored, show the modal to get user's name
-if (!name || !userID) showNameModal();
+// If not stored, show the modal to get the user's name
+if (!userName || !userID) {
+    showNameModal();
+}
 
 // Handle submission of the name form in the modal
 $('#nameForm').submit(function (event) {
     event.preventDefault(); // Prevent default form submission
 
-    // Get name from input and generate a unique userID
-    name = $('#nameInput').val();
+    // Get userName from input and generate a unique userID
+    userName = $('#nameInput').val();
     userID = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
-    // Store name and userID in local storage
-    localStorage.setItem('name', name);
+    // Store userName and userID in local storage
+    localStorage.setItem('userName', userName); // Updated key
     localStorage.setItem('userID', userID);
 
     // Send the data to the server using AJAX
     $.ajax({
         type: 'POST',
-        url: 'api.php?action=setuser',
-        data: { name, userID },
+        url: '/setuser',
+        data: { userName, userID }, // Updated data
         success: function (data) {
+            console.log(data); // Log the server response (optional)
             $('#nameModal').modal('hide'); // Close the modal
         },
         error: function (error) {
@@ -37,9 +40,18 @@ $('#nameForm').submit(function (event) {
 });
 
 // Speech recognition setup
-const recognition = new webkitSpeechRecognition() || new SpeechRecognition();
+const recognition = new webkitSpeechRecognition();
 recognition.continuous = false; // Recognize single utterances
-recognition.lang = 'en-US'; // Set recognition language
+// Automatic language detection
+recognition.lang = navigator.language || navigator.userLanguage;
+
+function updateRecognitionLang(selectedLang) {
+    if (recognition) {
+        recognition.lang = selectedLang;
+    }
+}
+
+
 
 // Get references to HTML elements
 const searchBar = document.querySelector('.search-bar');
@@ -49,40 +61,67 @@ const listeningIndicator = document.querySelector('.listening-indicator');
 // Function to start speech recognition
 function startSpeechRecognition() {
     recognition.start();
-    microphoneIcon.src = 'img/mic-active.png'; // Change icon to active state
+    microphoneIcon.src = '/static/img/mic-active.png'; // Change icon to active state
     listeningIndicator.textContent = 'Listening...'; // Show listening indicator
 }
 
+async function translateText(textToTranslate) {
+    try {
+        const response = await fetch('/translate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: textToTranslate
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return (data.translated_text);
+    } catch (error) {
+        console.error("Error during translation:", error);
+    }
+}
+
 // Handle speech recognition results
-recognition.onresult = function (event) {
-    const transcript = event.results[0][0].transcript; // Get transcribed text
-    searchBar.value = transcript; // Set the text in the search bar
+recognition.onresult = async function (event) {
+    const transcript = event.results[0][0].transcript;
+    searchBar.value = transcript;
 
     const userID = localStorage.getItem('userID');
-    const audioBlob = event.results[0][0].audio; // Get audio blob (if available)
 
-    // Prepare data to send to the server
     const formData = new FormData();
     formData.append('transcript', transcript);
     formData.append('userID', userID);
-    if (audioBlob) formData.append('audio', audioBlob, 'recording.wav');
+    formData.append('ln', recognition.lang);
 
-    // Send the data to the server using AJAX
+    if (!recognition.lang.startsWith('en')) {
+        // Wait for the translation to complete before proceeding
+        let translation = await translateText(transcript);
+        formData.append('translatedText', translation); // Append the translated text
+        console.log(translation);
+    }
+
     $.ajax({
         type: 'POST',
-        url: 'api.php?action=addtranscript',
+        url: '/addtranscript',
         data: formData,
-        processData: false, // Important for FormData
-        contentType: false, // Important for FormData
+        processData: false,
+        contentType: false,
         success: function (data) {
             console.log(data);
         },
         error: function (error) {
-            console.error('Error:', error); // Log any errors
+            console.error('Error:', error);
         }
     });
 
-    resetMicrophone(); // Reset microphone icon and indicator
+    resetMicrophone();
 };
 
 // Handle speech recognition errors and end
@@ -95,7 +134,7 @@ recognition.onend = resetMicrophone;
 
 // Function to reset microphone icon and indicator
 function resetMicrophone() {
-    microphoneIcon.src = 'img/mic.png';
+    microphoneIcon.src = '/static/img/mic.png';
     listeningIndicator.textContent = '';
 }
 
@@ -109,7 +148,7 @@ $('#viewTranscriptsButton').click(function () {
     // Fetch transcripts from the server using AJAX
     $.ajax({
         type: 'GET',
-        url: 'api.php?action=gettranscripts&userID=' + userID,
+        url: '/gettranscripts?userID=' + userID,
         success: displayTranscripts, // Call function to display transcripts
         error: function (error) {
             console.error('Error fetching transcripts:', error);
@@ -119,15 +158,29 @@ $('#viewTranscriptsButton').click(function () {
 
 // Function to display the transcripts 
 function displayTranscripts(transcripts) {
-    $('#transcriptsContainer').empty(); // Clear previous transcripts
 
-    // Add each transcript to the container
+    $('#transcriptsContainer').empty();
+
     for (const transcript of transcripts) {
-        const transcriptElement = $('<div>').text(transcript.original_text);
+        const transcriptElement = $('<div>').text(transcript.transcript);
+
+        if (transcript.original !== transcript.transcript) {
+            // Create the image element
+            const infoIcon = $('<img>').attr({
+                src: '/static/img/info.png',
+                alt: 'Original Text Available' // For accessibility
+            });
+            // console.log(transcripts)
+            // Append the image to the transcript element
+            transcriptElement.append(infoIcon);
+
+            // Set the original text as the tooltip for the image
+            infoIcon.attr('title', transcript.original);
+        }
+
         $('#transcriptsContainer').append(transcriptElement);
     }
 }
-
 
 // Add event listener to the "View Word Frequency" button
 $('#viewWordFrequencyButton').click(function () {
@@ -135,7 +188,7 @@ $('#viewWordFrequencyButton').click(function () {
 
     $.ajax({
         type: 'GET',
-        url: 'api.php?action=getwordfrequency&userID=' + userID,
+        url: '/getwordfrequency?userID=' + userID,
         dataType: 'json',
         success: function (data) {
             displayWordFrequency(data);
@@ -165,26 +218,30 @@ function displayWordFrequency(frequencyData) {
         topPhrasesList.append(listItem);
     }
 
-    // Display user's word frequency
-    for (const word in frequencyData.user) {
+
+    // Parse both user and all_users data, which are stringified JSON arrays
+    const userFrequencyData = JSON.parse(frequencyData.user);
+    const allUsersFrequencyData = JSON.parse(frequencyData.all_users);
+
+    // Display user's word frequency, now iterating over the array
+    for (const entry of userFrequencyData) {
         const row = $('<tr>');
-        row.append($('<td>').text(word));
-        row.append($('<td>').text(frequencyData.user[word]));
+        row.append($('<td>').text(entry.word));
+        row.append($('<td>').text(entry.frequency));
         userTableBody.append(row);
     }
 
-    // Display all users' word frequency
-    for (const word in frequencyData.all_users) {
+    // Display all users' word frequency (remains the same)
+    for (const entry of allUsersFrequencyData) {
         const row = $('<tr>');
-        row.append($('<td>').text(word));
-        row.append($('<td>').text(frequencyData.all_users[word]));
+        row.append($('<td>').text(entry.word));
+        row.append($('<td>').text(entry.total_frequency));
         allUsersTableBody.append(row);
     }
 
     // Show the modal or container where the tables are displayed
-    $('#wordFrequencyModal').modal('show'); // Or use your preferred method to display the data
+    $('#wordFrequencyModal').modal('show');
 }
-
 
 // Add event listener to the "View Similar Users" button 
 $('#viewSimilarUsersButton').click(function () {
@@ -192,7 +249,7 @@ $('#viewSimilarUsersButton').click(function () {
 
     $.ajax({
         type: 'GET',
-        url: 'api.php?action=getsimilarusers&userID=' + userID,
+        url: '/getsimilarusers?userID=' + userID,
         dataType: 'json',
         success: function (data) {
             displaySimilarUsers(data);
